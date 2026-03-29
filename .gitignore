@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+.env
+
+# Build artifacts
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/

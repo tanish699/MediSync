@@ -1,0 +1,22 @@
+{
+  "name": "fse_project",
+  "version": "1.0.0",
+  "description": "A fullstack boilerplate with: - **Frontend**: React (Vite) - **Backend**: Express.js + MySQL2 - **Concurrency**: Both run together via `npm run dev`",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "start": "concurrently \"npm run start --prefix backend\" \"npm run dev --prefix frontend\"",
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github-personal:tanish699/MediSync.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
