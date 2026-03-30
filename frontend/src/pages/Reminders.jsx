@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 
 const navLinks = [
@@ -44,6 +45,7 @@ const afternoonItems = [
 ];
 
 export default function Reminders() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Schedule');
   const [items, setItems] = useState({ morning: morningItems });
 
@@ -60,9 +62,14 @@ export default function Reminders() {
     <div className="page-layout">
       <Navbar links={navLinks} />
       <div className="content-area">
-        <div className="page-header">
-          <h1>Today's Care</h1>
-          <p>Manage your family's health journey with gentleness. 4 doses remaining for today.</p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 36 }}>
+          <div className="page-header" style={{ marginBottom: 0 }}>
+            <h1>Today's Care</h1>
+            <p>Manage your family's health journey with gentleness. 4 doses remaining for today.</p>
+          </div>
+          <button className="btn btn-primary" onClick={() => navigate('/reminders/add')} style={{ padding: '12px 24px', flexShrink: 0, marginTop: 8 }}>
+            + Add Reminder
+          </button>
         </div>
 
         <div className="reminders-layout">
@@ -162,20 +169,9 @@ export default function Reminders() {
               ))}
             </div>
 
-            {/* Family message */}
-            <div className="msg-card">
-              <div>
-                <span className="msg-author">Dad</span>
-                <span className="msg-time">10:45 AM</span>
-              </div>
-              <p className="msg-text">I'll pick up more Lisinopril for Sarah on my way home today. The bottle looks almost empty.</p>
-              <div className="msg-actions">
-                <button className="msg-action-btn">Got it</button>
-                <button className="msg-action-btn">Thanks Dad!</button>
-              </div>
-            </div>
 
-            <button className="fab">+</button>
+
+
           </div>
         </div>
       </div>
