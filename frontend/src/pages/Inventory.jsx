@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 
 const navLinks = [
@@ -50,6 +51,7 @@ const initialMeds = [
 const filters = ['Everyone', 'Sarah', 'James', 'Lily'];
 
 export default function Inventory() {
+  const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState('Everyone');
   const [search, setSearch] = useState('');
 
@@ -69,7 +71,7 @@ export default function Inventory() {
             <h1>Medicine Cabinet</h1>
             <p>Detailed inventory for the Miller Household.</p>
           </div>
-          <button className="btn btn-primary" style={{ padding: '12px 24px', flexShrink: 0, marginTop: 8 }}>
+          <button className="btn btn-primary" onClick={() => navigate('/inventory/add')} style={{ padding: '12px 24px', flexShrink: 0, marginTop: 8 }}>
             + Add Medicine
           </button>
         </div>
