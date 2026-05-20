@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import Navbar from '../components/Navbar';
 
 const navLinks = [
@@ -9,190 +11,161 @@ const navLinks = [
   { to: '/family', label: 'Family' },
 ];
 
-const members = ['Sarah', 'David', 'Emma', 'Arthur', 'Grandma', 'Leo'];
-const frequencies = ['Once daily', 'Twice daily', 'Three times daily', 'Every other day', 'Weekly', 'As needed'];
+const frequencies = ['Once', 'Once daily', 'Twice daily', 'Three times daily', 'Every other day', 'Weekly', 'As needed'];
 
 export default function AddReminder() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
   const [form, setForm] = useState({
-    medicineName: '',
-    member: '',
+    title: '',
+    familyMemberId: '',
+    inventoryItemId: '',
     date: '',
     time: '',
     frequency: '',
     notes: '',
-    withFood: false,
   });
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) { navigate('/'); return; }
+    Promise.all([
+      api.get(`/family/user/${user.id}`),
+      api.get(`/inventory/user/${user.id}`),
+    ]).then(([famRes, invRes]) => {
+      setFamilyMembers(famRes.data);
+      setInventoryItems(invRes.data);
+    }).catch(err => console.error('Error fetching data:', err));
+  }, [user, navigate]);
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitted(true);
-    setTimeout(() => navigate('/reminders'), 1500);
+    setError('');
+    setSaving(true);
+
+    try {
+      const reminderTime = `${form.date} ${form.time}:00`;
+
+      await api.post('/reminders', {
+        user_id: user.id,
+        family_member_id: form.familyMemberId || null,
+        inventory_item_id: form.inventoryItemId || null,
+        title: form.title,
+        description: form.notes || null,
+        reminder_time: reminderTime,
+        frequency: form.frequency || 'Once',
+      });
+
+      setSubmitted(true);
+      setTimeout(() => navigate('/reminders'), 1500);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create reminder');
+      setSaving(false);
+    }
   };
 
   return (
     <div className="page-layout">
       <Navbar links={navLinks} />
 
-      <div className="content-area" style={{ maxWidth: 680, margin: '0 auto' }}>
-        {/* Back */}
-        <button
-          onClick={() => navigate('/reminders')}
-          style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 6 }}
-        >
-          ← Back to Reminders
+      <div className="content-area narrow">
+        <button onClick={() => navigate('/reminders')} className="back-link">
+          Back to Reminders
         </button>
 
-        <div className="page-header" style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 28 }}>New Reminder</h1>
-          <p>Set up a personalised dose schedule for a family member.</p>
+        <div className="page-header">
+          <h1>New Reminder</h1>
+          <p>Set up a personalized dose schedule for a family member.</p>
         </div>
 
         {submitted ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
-            <h2 style={{ color: 'var(--primary)', marginBottom: 8 }}>Reminder Created!</h2>
-            <p style={{ color: 'var(--text-muted)' }}>Redirecting you back to the schedule…</p>
+          <div className="success-state">
+            <div className="state-mark">OK</div>
+            <h2 style={{ color: 'var(--primary-700)', marginBottom: 8 }}>Reminder Created</h2>
+            <p>Redirecting you back to the schedule...</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
-            {/* Medicine Name */}
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Medicine / Item Name
-              </label>
+          <form onSubmit={handleSubmit} className="card surface-panel">
+            {error && <div className="error-banner">{error}</div>}
+
+            <div className="form-group">
+              <label className="muted-label">Reminder Title</label>
               <div className="input-icon-wrap">
                 <span className="input-icon">💊</span>
-                <input
-                  required
-                  className="form-input"
-                  placeholder="e.g. Lisinopril 10mg"
-                  value={form.medicineName}
-                  onChange={e => set('medicineName', e.target.value)}
-                />
+                <input required className="form-input" placeholder="e.g. Take Lisinopril 10mg" value={form.title} onChange={e => set('title', e.target.value)} />
               </div>
             </div>
 
-            {/* Family Member */}
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                For
-              </label>
+            <div className="form-group">
+              <label className="muted-label">For</label>
               <div className="input-icon-wrap">
                 <span className="input-icon">👤</span>
-                <select
-                  required
-                  className="form-input"
-                  value={form.member}
-                  onChange={e => set('member', e.target.value)}
-                  style={{ appearance: 'none', cursor: 'pointer' }}
-                >
-                  <option value="">Select family member…</option>
-                  {members.map(m => <option key={m} value={m}>{m}</option>)}
+                <select className="form-input" value={form.familyMemberId} onChange={e => set('familyMemberId', e.target.value)}>
+                  <option value="">Myself</option>
+                  {familyMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Date + Time row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div className="form-group">
+              <label className="muted-label">Linked Medicine (optional)</label>
+              <div className="input-icon-wrap">
+                <span className="input-icon">🔗</span>
+                <select className="form-input" value={form.inventoryItemId} onChange={e => set('inventoryItemId', e.target.value)}>
+                  <option value="">None</option>
+                  {inventoryItems.map(i => <option key={i.id} value={i.id}>{i.item_name} ({i.quantity} remaining)</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-grid-2">
               <div className="form-group">
-                <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Start Date
-                </label>
+                <label className="muted-label">Date</label>
                 <div className="input-icon-wrap">
                   <span className="input-icon">📅</span>
-                  <input
-                    required
-                    type="date"
-                    className="form-input"
-                    value={form.date}
-                    onChange={e => set('date', e.target.value)}
-                  />
+                  <input required type="date" className="form-input" value={form.date} onChange={e => set('date', e.target.value)} />
                 </div>
               </div>
               <div className="form-group">
-                <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Time
-                </label>
+                <label className="muted-label">Time</label>
                 <div className="input-icon-wrap">
                   <span className="input-icon">⏰</span>
-                  <input
-                    required
-                    type="time"
-                    className="form-input"
-                    value={form.time}
-                    onChange={e => set('time', e.target.value)}
-                  />
+                  <input required type="time" className="form-input" value={form.time} onChange={e => set('time', e.target.value)} />
                 </div>
               </div>
             </div>
 
-            {/* Frequency */}
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Frequency
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div className="form-group">
+              <label className="muted-label">Frequency</label>
+              <div className="chip-group">
                 {frequencies.map(f => (
                   <button
                     type="button"
                     key={f}
                     onClick={() => set('frequency', f)}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: 20,
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      background: form.frequency === f ? 'var(--primary)' : 'var(--surface-2)',
-                      color: form.frequency === f ? '#fff' : 'var(--text-secondary)',
-                      transition: 'all 0.15s',
-                    }}
-                  >{f}</button>
+                    className={`chip ${form.frequency === f ? 'active' : ''}`}
+                  >
+                    {f}
+                  </button>
                 ))}
               </div>
             </div>
 
-            {/* With food toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '14px 18px', background: 'var(--surface-2)', borderRadius: 12 }}>
-              <input
-                type="checkbox"
-                id="withFood"
-                checked={form.withFood}
-                onChange={e => set('withFood', e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: 'var(--primary)', cursor: 'pointer' }}
-              />
-              <label htmlFor="withFood" style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-                🥗 Take with food
-              </label>
+            <div className="form-group">
+              <label className="muted-label">Notes (optional)</label>
+              <textarea className="form-input" placeholder="Any special instructions..." value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} />
             </div>
 
-            {/* Notes */}
-            <div className="form-group" style={{ marginBottom: 32 }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Notes (optional)
-              </label>
-              <textarea
-                className="form-input"
-                placeholder="Any special instructions…"
-                value={form.notes}
-                onChange={e => set('notes', e.target.value)}
-                rows={3}
-                style={{ resize: 'vertical', paddingTop: 12, fontFamily: 'inherit' }}
-              />
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button type="button" onClick={() => navigate('/reminders')} style={{ flex: 1, padding: '14px', borderRadius: 12, border: 'none', background: 'var(--surface-2)', fontWeight: 700, fontSize: 15, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                Cancel
-              </button>
-              <button type="submit" className="btn btn-primary" style={{ flex: 2, padding: '14px', fontSize: 15 }}>
-                ✓ Create Reminder
+            <div className="form-actions">
+              <button type="button" onClick={() => navigate('/reminders')} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 2 }} disabled={saving}>
+                {saving ? 'Saving...' : 'Create Reminder'}
               </button>
             </div>
           </form>

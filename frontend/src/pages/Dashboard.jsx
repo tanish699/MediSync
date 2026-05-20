@@ -1,4 +1,7 @@
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import Navbar from '../components/Navbar';
 
 const navLinks = [
@@ -8,97 +11,159 @@ const navLinks = [
   { to: '/family', label: 'Family' },
 ];
 
-const reminders = [
-  { time: '08:00 AM', for: 'David', name: 'Lisinopril', dose: '10mg Tablet • With food', done: false, icon: '💊' },
-  { time: '09:30 AM', for: 'Emma', name: 'Vitamin D3', dose: '2000 IU Softgel', done: false, icon: '🧪' },
-  { time: '07:00 AM', for: 'Sarah', name: 'Metformin', dose: 'Taken at 07:05 AM', done: true, icon: '✅' },
-];
-
 export default function Dashboard() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [reminders, setReminders] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) { navigate('/'); return; }
+
+    const fetchData = async () => {
+      try {
+        const [remRes, invRes] = await Promise.all([
+          api.get(`/reminders/user/${user.id}`),
+          api.get(`/inventory/user/${user.id}`),
+        ]);
+        setReminders(remRes.data);
+        setInventory(invRes.data);
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [user, navigate]);
+
+  const lowStockItems = inventory.filter(i => i.quantity < 10);
+  const pendingReminders = reminders.filter(r => !r.is_completed);
+
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const handleComplete = async (id) => {
+    try {
+      await api.put(`/reminders/${id}/complete`);
+      setReminders(prev => prev.map(r => r.id === id ? { ...r, is_completed: true } : r));
+    } catch (err) {
+      console.error('Error completing reminder:', err);
+    }
+  };
+
+  const handleSignOut = () => {
+    logout();
+    navigate('/');
+  };
+
   return (
     <div className="page-layout">
       <Navbar links={navLinks} />
 
       <div className="content-area">
-        {/* Hero banner */}
-        <div className="dash-hero" style={{ marginBottom: 28 }}>
-          <h1>Good morning, Sarah.</h1>
-          <p>Everything is on track today. You have 3 reminders remaining for the household.</p>
-        </div>
+        <section className="dash-hero">
+          <div className="dash-hero-top">
+            <div>
+              <h1>{getGreeting()}, {user?.username || 'there'}. 👋</h1>
+              <p>
+                {pendingReminders.length > 0
+                  ? `You have ${pendingReminders.length} reminder${pendingReminders.length > 1 ? 's' : ''} remaining.`
+                  : 'All caught up. No pending reminders.'}
+                {lowStockItems.length > 0 && ` ${lowStockItems.length} medicine${lowStockItems.length > 1 ? 's are' : ' is'} running low.`}
+              </p>
+            </div>
+            <button onClick={handleSignOut} className="hero-signout">Sign Out</button>
+          </div>
+        </section>
 
-        <div className="dash-content" style={{ padding: 0 }}>
-          {/* Left column */}
-          <div>
-            {/* Today's reminders */}
-            <div style={{ marginBottom: 28 }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 700, flex: 1 }}>Today's Reminders</h2>
-                <Link to="/reminders" className="full-schedule-link">Full Schedule →</Link>
+        {loading ? (
+          <div className="loading-state">Loading your dashboard...</div>
+        ) : (
+          <div className="dash-content">
+            <div>
+              <div className="reminders-header">
+                <h2>Your Reminders</h2>
+                <Link to="/reminders" className="full-schedule-link">Full Schedule</Link>
               </div>
 
-              {reminders.map((r, i) => (
-                <div key={i} className={`reminder-item ${r.done ? 'logged' : ''}`}>
-                  <div className="med-icon med-icon-teal">{r.icon}</div>
-                  <div className="reminder-info">
-                    <div className="reminder-meta">{r.time} · {r.for}</div>
-                    <div className="reminder-name">{r.name}</div>
-                    <div className="reminder-dose">{r.dose}</div>
+              {reminders.length === 0 ? (
+                <div className="empty-state">
+                  <div className="state-mark">📝</div>
+                  <p>No reminders yet. <Link to="/reminders/add" className="text-link">Create one</Link></p>
+                </div>
+              ) : (
+                reminders.slice(0, 5).map((r) => (
+                  <div key={r.id} className={`reminder-item ${r.is_completed ? 'logged' : ''}`}>
+                    <div className={`med-icon ${r.is_completed ? 'med-icon-teal' : 'med-icon-red'}`}>
+                      {r.is_completed ? '✅' : '💊'}
+                    </div>
+                    <div className="reminder-info">
+                      <div className="reminder-meta">
+                        {new Date(r.reminder_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {r.family_member_name && ` - ${r.family_member_name}`}
+                      </div>
+                      <div className="reminder-name">{r.title}</div>
+                      <div className="reminder-dose">{r.description || r.frequency}</div>
+                    </div>
+                    {r.is_completed
+                      ? <span className="badge badge-green">Logged</span>
+                      : <button className="btn btn-primary" onClick={() => handleComplete(r.id)}>Take</button>
+                    }
                   </div>
-                  {r.done
-                    ? <span style={{ fontSize: 13, color: '#9dbdb7', fontWeight: 600 }}>Logged</span>
-                    : <button className="btn btn-primary" style={{ padding: '8px 20px', fontSize: 14 }}>Take</button>
-                  }
-                </div>
-              ))}
+                ))
+              )}
             </div>
-          </div>
 
-          {/* Right column */}
-          <div className="dash-right-col">
-            {/* Urgent alerts */}
-            <div className="alert-card">
-              <h3>⚠️ Urgent Alerts</h3>
-              <div className="alert-item danger">
-                <div className="alert-name">Missed Dose: David</div>
-                <div className="alert-desc">Evening Insulin was not logged yesterday at 9:00 PM.</div>
-                <button className="alert-link">Resolve Now</button>
+            <aside className="dash-right-col">
+              <div className="alert-card">
+                <h3><span className="alert-heading-mark">⚠️</span> Alerts</h3>
+                {lowStockItems.length > 0 ? (
+                  lowStockItems.map(item => (
+                    <div key={item.id} className="alert-item warning">
+                      <div className="alert-name">Low Inventory</div>
+                      <div className="alert-desc">{item.item_name}{item.family_member_name ? ` for ${item.family_member_name}` : ''} is running low.</div>
+                      <div className="badge badge-red">{item.quantity} left</div>
+                      <div><Link to="/inventory" className="alert-link teal">View Inventory</Link></div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <div className="state-mark">✅</div>
+                    <p>No alerts. Everything looks good.</p>
+                  </div>
+                )}
               </div>
-              <div className="alert-item warning">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div className="alert-name">Low Inventory</div>
-                  <span className="badge badge-red" style={{ fontSize: 10 }}>3 DAYS LEFT</span>
-                </div>
-                <div className="alert-desc">Atorvastatin for Sarah is running low.</div>
-                <button className="alert-link teal">Order Refill</button>
-              </div>
-            </div>
-          </div>
+            </aside>
 
-          {/* Action cards — Full width row */}
-          <div className="dash-action-cards" style={{ gridColumn: '1 / -1', gridTemplateColumns: '1fr 1fr 1fr' }}>
-            <div className="action-card teal">
-              <div className="action-card-icon">👥</div>
-              <h3>Invite Family</h3>
-              <p>Coordinate care effortlessly by adding family members to your hearth.</p>
-              <a href="#" className="action-card-link">Send Invite →</a>
-            </div>
-            <div className="action-card mint">
-              <div className="action-card-icon">💊</div>
-              <h3>Add Medicine</h3>
-              <p>Record new prescriptions or over-the-counter medications to your inventory.</p>
-              <a href="/inventory" className="action-card-link">Add New Medicine →</a>
-            </div>
-            <div className="action-card" style={{ background: '#e8eceb' }}>
-              <div className="action-card-icon">⏰</div>
-              <h3>Add Reminder</h3>
-              <p>Set up personalized dose notifications for any medication or health task.</p>
-              <a href="/reminders" className="action-card-link">Set New Reminder →</a>
+            <div className="dash-action-cards">
+              <Link to="/family" className="action-card">
+                <div className="action-card-icon care">👥</div>
+                <h3>Manage Family</h3>
+                <p>Add family members and coordinate care together.</p>
+                <span className="action-card-link">Go to Family</span>
+              </Link>
+              <Link to="/inventory/add" className="action-card">
+                <div className="action-card-icon meds">💊</div>
+                <h3>Add Medicine</h3>
+                <p>Record prescriptions or over-the-counter medication.</p>
+                <span className="action-card-link">Add Medicine</span>
+              </Link>
+              <Link to="/reminders/add" className="action-card">
+                <div className="action-card-icon time">⏰</div>
+                <h3>Add Reminder</h3>
+                <p>Set up personalized dose notifications.</p>
+                <span className="action-card-link">Set Reminder</span>
+              </Link>
             </div>
           </div>
-        </div>
+        )}
       </div>
-
-      {/* <button className="fab">+</button> */}
     </div>
   );
 }

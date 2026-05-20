@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import Navbar from '../components/Navbar';
 
 const navLinks = [
@@ -9,163 +11,128 @@ const navLinks = [
   { to: '/family', label: 'Family' },
 ];
 
-const initialMeds = [
-  {
-    name: 'Lisinopril',
-    dose: '10mg Tablet • Oral',
-    resident: 'James (Dad)',
-    residentDot: 'green',
-    current: 42, total: 60,
-    icon: '💊', iconBg: 'teal',
-    low: false,
-  },
-  {
-    name: 'Amoxicillin',
-    dose: '500mg Capsule • Oral',
-    resident: 'Lily (Child)',
-    residentDot: 'red',
-    current: 3, total: 21,
-    icon: '⚠️', iconBg: 'red',
-    low: true,
-  },
-  {
-    name: 'Multivitamin',
-    dose: 'Gummy • Oral',
-    resident: 'Household',
-    residentDot: 'yellow',
-    current: 85, total: 100,
-    icon: '💊', iconBg: 'teal',
-    low: false,
-  },
-  {
-    name: 'Eye Drops',
-    dose: '0.05% Solution • Topical',
-    resident: 'Sarah (Mom)',
-    residentDot: 'purple',
-    current: 15, total: 30,
-    icon: '💧', iconBg: 'teal',
-    low: false,
-  },
-];
-
-const filters = ['Everyone', 'Sarah', 'James', 'Lily'];
-
 export default function Inventory() {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState('Everyone');
+  const { user } = useAuth();
+  const [meds, setMeds] = useState([]);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const meds = initialMeds.filter(m => {
-    const matchesFilter = activeFilter === 'Everyone' || m.resident.toLowerCase().includes(activeFilter.toLowerCase());
-    const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
+  useEffect(() => {
+    if (!user) { navigate('/'); return; }
+
+    const fetchInventory = async () => {
+      try {
+        const { data } = await api.get(`/inventory/user/${user.id}`);
+        setMeds(data);
+      } catch (err) {
+        console.error('Error fetching inventory:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInventory();
+  }, [user, navigate]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    try {
+      await api.delete(`/inventory/${id}`);
+      setMeds(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      console.error('Error deleting item:', err);
+    }
+  };
+
+  const filtered = meds.filter(m =>
+    m.item_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const lowStockCount = meds.filter(m => m.quantity < 10).length;
 
   return (
     <div className="page-layout">
       <Navbar links={navLinks} />
       <div className="content-area">
-        {/* Page header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 36 }}>
-          <div className="page-header" style={{ marginBottom: 0 }}>
+        <div className="page-toolbar">
+          <div className="page-header">
             <h1>Medicine Cabinet</h1>
-            <p>Detailed inventory for the Miller Household.</p>
+            <p>Your complete household medicine inventory.</p>
           </div>
-          <button className="btn btn-primary" onClick={() => navigate('/inventory/add')} style={{ padding: '12px 24px', flexShrink: 0, marginTop: 8 }}>
-            + Add Medicine
-          </button>
+          <button className="btn btn-primary" onClick={() => navigate('/inventory/add')}>+ Add Medicine</button>
         </div>
 
-        <div className="inventory-layout">
-          {/* Left sidebar */}
-          <div className="inv-sidebar">
-            <div className="inv-search-card">
-              <div className="section-title">SEARCH RECORDS</div>
-              <div className="search-input-wrap" style={{ marginBottom: 20 }}>
-                <span className="search-icon">🔍</span>
+        <div className="workspace-grid">
+          <aside>
+            <div className="card surface-panel">
+              <span className="muted-label">Search Records</span>
+              <div className="input-icon-wrap" style={{ marginBottom: 'var(--space-5)' }}>
+                <span className="input-icon">🔍</span>
                 <input
-                  className="search-input"
-                  placeholder="Ibuprofen, etc..."
+                  className="form-input"
+                  placeholder="Search medicines..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
 
-              <div className="section-title">FILTER BY RESIDENT</div>
-              <div className="filter-chips">
-                {filters.map(f => (
-                  <button
-                    key={f}
-                    className={`filter-chip ${activeFilter === f ? 'active' : ''}`}
-                    onClick={() => setActiveFilter(f)}
-                  >{f}</button>
-                ))}
-              </div>
-
-              <div className="low-stock-row" style={{ marginTop: 16 }}>
-                <span className="low-stock-label">Low Stock Alerts</span>
-                <span className="low-stock-badge">3</span>
+              <div className="alert-item warning">
+                <div className="alert-name">Low Stock Alerts</div>
+                <div className="badge badge-red">{lowStockCount}</div>
               </div>
             </div>
-          </div>
+          </aside>
 
-          {/* Medication table */}
-          <div>
-            <div className="med-table-header">
-              <span>MEDICATION &amp; DOSAGE</span>
-              <span>RESIDENT</span>
-              <span>REMAINING</span>
-              <span>ACTIONS</span>
-            </div>
+          <main>
+            {loading ? (
+              <div className="loading-state">Loading inventory...</div>
+            ) : filtered.length === 0 ? (
+              <div className="empty-state">
+                <div className="state-mark">💊</div>
+                <p style={{ marginBottom: 8, fontWeight: 600 }}>No medicines in your cabinet yet.</p>
+                <p>Click <strong>"+ Add Medicine"</strong> to get started.</p>
+              </div>
+            ) : (
+              <div className="med-grid">
+                {filtered.map((med) => {
+                  const isLow = med.quantity < 10;
+                  return (
+                    <div key={med.id} className="card med-card">
+                      <div className="med-header">
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                          <div className={`med-icon ${isLow ? 'med-icon-red' : 'med-icon-teal'}`}>
+                            {isLow ? '⚠️' : '💊'}
+                          </div>
+                          <div>
+                            <div className="med-title">{med.item_name}</div>
+                            <div className="med-desc">{med.family_member_name ? `For ${med.family_member_name}` : 'Household'}</div>
+                          </div>
+                        </div>
+                        <button className="icon-btn icon-btn-danger" onClick={() => handleDelete(med.id)} title="Delete">🗑️</button>
+                      </div>
 
-            {meds.map((med, i) => {
-              const pct = Math.round((med.current / med.total) * 100);
-              const unit = med.dose.includes('ml') ? 'ml' : 'Units';
-              return (
-                <div key={i} className="med-row">
-                  {/* Name col */}
-                  <div className="med-name-col">
-                    <div className={`med-icon med-icon-${med.iconBg}`}>{med.icon}</div>
-                    <div>
-                      <div className="med-name">{med.name}</div>
-                      <div className="med-dose">{med.dose}</div>
+                      <div className="med-stats">
+                        <div className="stat-row">
+                          <span className="stat-label">Quantity</span>
+                          <span className={`stat-val ${isLow ? 'badge badge-red' : ''}`}>{med.quantity} {med.unit || 'Units'}</span>
+                        </div>
+                        <div className="stat-row">
+                          <span className="stat-label">Dosage</span>
+                          <span className="stat-val">{med.dosage || '-'}</span>
+                        </div>
+                        {med.expiry_date && (
+                          <div className="stat-row">
+                            <span className="stat-label">Expiry Date</span>
+                            <span className="stat-val">{new Date(med.expiry_date).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Resident */}
-                  <div>
-                    <div className="resident-tag">
-                      <span className={`dot dot-${med.residentDot}`} />
-                      {med.resident}
-                    </div>
-                  </div>
-
-                  {/* Remaining */}
-                  <div>
-                    <div className={`med-remaining-num ${med.low ? 'low' : 'ok'}`}>
-                      {med.current} / {med.total} {unit}
-                    </div>
-                    <div className="progress-bar" style={{ width: 120 }}>
-                      <div
-                        className={`progress-fill ${med.low ? 'fill-red' : 'fill-green'}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="med-actions">
-                    <button className="icon-btn">{med.low ? '🔄' : '✏️'}</button>
-                    <button className="icon-btn">⋮</button>
-                  </div>
-                </div>
-              );
-            })}
-
-            <button className="show-more-row">
-              ∨ Show All Medication (12 more)
-            </button>
-          </div>
+                  );
+                })}
+              </div>
+            )}
+          </main>
         </div>
       </div>
     </div>

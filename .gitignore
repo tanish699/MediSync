@@ -12,3 +12,4 @@ build/
 # Editor
 .vscode/
 .idea/
+backend/.env.example

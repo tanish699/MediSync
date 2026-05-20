@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import api from '../api';
 import Navbar from '../components/Navbar';
 
 const navLinks = [
@@ -9,170 +11,162 @@ const navLinks = [
   { to: '/family', label: 'Family' },
 ];
 
-const days = ['MO','TU','WE','TH','FR','SA','SU'];
-const dates = [23, 24, 25, 26, 27, 28, 29];
-
-const morningItems = [
-  {
-    name: 'Lisinopril 10mg',
-    for: 'Sarah',
-    time: '08:00 AM',
-    taken: true,
-    loggedAt: '08:04 AM',
-    icon: '💊',
-    iconBg: 'teal',
-  },
-  {
-    name: 'Ventolin Inhaler',
-    for: 'Leo',
-    time: '09:30 AM',
-    taken: false,
-    icon: '⚕️',
-    iconBg: 'red',
-    urgent: true,
-  },
-];
-
-const afternoonItems = [
-  {
-    name: 'Multivitamin',
-    for: 'Grandma',
-    time: '01:00 PM',
-    inHours: 'In 2 hours',
-    icon: '💊',
-    iconBg: 'gray',
-  },
-];
-
 export default function Reminders() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [reminders, setReminders] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Schedule');
-  const [items, setItems] = useState({ morning: morningItems });
 
-  const confirmDose = (name) => {
-    setItems(prev => ({
-      ...prev,
-      morning: prev.morning.map(i =>
-        i.name === name ? { ...i, taken: true, loggedAt: 'Just now' } : i
-      )
-    }));
+  useEffect(() => {
+    if (!user) { navigate('/'); return; }
+
+    const fetchReminders = async () => {
+      try {
+        const { data } = await api.get(`/reminders/user/${user.id}`);
+        setReminders(data);
+      } catch (err) {
+        console.error('Error fetching reminders:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchReminders();
+  }, [user, navigate]);
+
+  const confirmDose = async (id) => {
+    try {
+      await api.put(`/reminders/${id}/complete`);
+      setReminders(prev => prev.map(r => r.id === id ? { ...r, is_completed: true } : r));
+    } catch (err) {
+      console.error('Error completing reminder:', err);
+    }
+  };
+
+  const pending = reminders.filter(r => !r.is_completed);
+  const completed = reminders.filter(r => r.is_completed);
+  const adherencePct = reminders.length > 0
+    ? Math.round((completed.length / reminders.length) * 100)
+    : 0;
+
+  const reminderMeta = (item, includeDate = false) => {
+    const time = new Date(item.reminder_time);
+    const parts = [];
+    if (item.family_member_name) parts.push(`For ${item.family_member_name}`);
+    if (includeDate) parts.push(time.toLocaleDateString());
+    parts.push(time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    if (item.frequency && item.frequency !== 'Once') parts.push(item.frequency);
+    return parts.join(' - ');
   };
 
   return (
     <div className="page-layout">
       <Navbar links={navLinks} />
       <div className="content-area">
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 36 }}>
-          <div className="page-header" style={{ marginBottom: 0 }}>
+        <div className="page-toolbar">
+          <div className="page-header">
             <h1>Today's Care</h1>
-            <p>Manage your family's health journey with gentleness. 4 doses remaining for today.</p>
+            <p>Manage your family's health journey. {pending.length} dose{pending.length !== 1 ? 's' : ''} remaining.</p>
           </div>
-          <button className="btn btn-primary" onClick={() => navigate('/reminders/add')} style={{ padding: '12px 24px', flexShrink: 0, marginTop: 8 }}>
-            + Add Reminder
-          </button>
+          <button className="btn btn-primary" onClick={() => navigate('/reminders/add')}>+ Add Reminder</button>
         </div>
 
-        <div className="reminders-layout">
-          {/* Left column */}
-          <div>
-            {/* Calendar */}
-            <div className="cal-card">
-              <div className="cal-header">
-                <h3>October 2023</h3>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button className="cal-nav">‹</button>
-                  <button className="cal-nav">›</button>
-                </div>
+        <div className="workspace-grid">
+          <aside>
+            <div className="card surface-panel">
+              <span className="muted-label">Overall Adherence</span>
+              <div className="gradient-text" style={{ fontSize: 48, fontWeight: 800, marginBottom: 'var(--space-4)', lineHeight: 1 }}>{adherencePct}%</div>
+              <div className="progress-bar" style={{ marginBottom: 'var(--space-4)' }}>
+                <div className="progress-fill" style={{ width: `${adherencePct}%` }} />
               </div>
-              <div className="cal-grid">
-                {days.map(d => <div key={d} className="cal-dow">{d}</div>)}
-                {dates.map(d => (
-                  <div key={d} className={`cal-day ${d === 25 ? 'active' : ''}`}>{d}</div>
-                ))}
-              </div>
+              <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+                {adherencePct >= 80
+                  ? 'Great job. Your family is staying on track.'
+                  : adherencePct >= 50
+                  ? 'Good progress. Keep up the care.'
+                  : reminders.length === 0
+                  ? 'Add your first reminder to start tracking.'
+                  : 'Some doses are pending. Stay consistent.'}
+              </p>
             </div>
 
-            {/* Adherence */}
-            <div className="adherence-card">
-              <div className="adherence-label">Weekly Adherence</div>
-              <div className="adherence-pct">94%</div>
-              <div className="adherence-bar">
-                <div className="adherence-fill" style={{ width: '94%' }} />
-              </div>
-              <div className="adherence-msg">Your family is staying on track. Keep up the great care!</div>
-            </div>
-
-            {/* Toggle */}
-            <div className="toggle-tabs">
+            <div className="chip-group" style={{ marginTop: 'var(--space-6)' }}>
               {['Schedule', 'History'].map(t => (
                 <button
                   key={t}
-                  className={`toggle-tab ${activeTab === t ? 'active' : ''}`}
+                  type="button"
+                  className={`chip ${activeTab === t ? 'active' : ''}`}
                   onClick={() => setActiveTab(t)}
-                >{t}</button>
+                >
+                  {t}
+                </button>
               ))}
             </div>
-          </div>
+          </aside>
 
-          {/* Right column */}
-          <div>
-            {/* Morning */}
-            <div className="time-section">
-              <div className="time-section-header">☀️ Morning</div>
+          <main>
+            {loading ? (
+              <div className="loading-state">Loading reminders...</div>
+            ) : reminders.length === 0 ? (
+              <div className="empty-state">
+                <div className="state-mark">📝</div>
+                <p style={{ marginBottom: 8, fontWeight: 600 }}>No reminders yet.</p>
+                <p>Click <strong>"+ Add Reminder"</strong> to create your first schedule.</p>
+              </div>
+            ) : activeTab === 'Schedule' ? (
+              <>
+                {pending.length > 0 && (
+                  <section style={{ marginBottom: 'var(--space-8)' }}>
+                    <div className="section-title"><span className="med-icon med-icon-red">⏳</span> Pending ({pending.length})</div>
+                    {pending.map((item) => (
+                      <div key={item.id} className="reminder-item">
+                        <div className="med-icon med-icon-red">💊</div>
+                        <div className="reminder-info">
+                          <div className="reminder-name">{item.title}</div>
+                          <div className="reminder-dose">{reminderMeta(item)}</div>
+                        </div>
+                        <button className="btn btn-primary" onClick={() => confirmDose(item.id)}>Confirm Dose</button>
+                      </div>
+                    ))}
+                  </section>
+                )}
 
-              {items.morning.map((item, i) => (
-                <div key={i} className={`rem-item ${item.urgent ? 'urgent-border' : ''}`}>
-                  <div className={`med-icon med-icon-${item.iconBg}`}>{item.icon}</div>
-                  <div className="rem-item-info">
-                    <div className="rem-item-name">{item.name}</div>
-                    <div className="rem-item-for">
-                      <span className="av-xs">👤</span>
-                      For {item.for} • {item.time}
+                {completed.length > 0 && (
+                  <section>
+                    <div className="section-title"><span className="med-icon med-icon-teal">✅</span> Completed ({completed.length})</div>
+                    {completed.map((item) => (
+                      <div key={item.id} className="reminder-item logged">
+                        <div className="med-icon med-icon-teal">✅</div>
+                        <div className="reminder-info">
+                          <div className="reminder-name">{item.title}</div>
+                          <div className="reminder-dose">{reminderMeta(item)}</div>
+                        </div>
+                        <div className="badge badge-green">Taken</div>
+                      </div>
+                    ))}
+                  </section>
+                )}
+              </>
+            ) : (
+              <section>
+                <div className="section-title"><span className="med-icon med-icon-gray">📋</span> All Reminders</div>
+                {reminders.map((item) => (
+                  <div key={item.id} className="reminder-item">
+                    <div className={`med-icon ${item.is_completed ? 'med-icon-teal' : 'med-icon-red'}`}>
+                      {item.is_completed ? '✅' : '⏳'}
+                    </div>
+                    <div className="reminder-info">
+                      <div className="reminder-name">{item.title}</div>
+                      <div className="reminder-dose">{reminderMeta(item, true)}</div>
+                    </div>
+                    <div className={`badge ${item.is_completed ? 'badge-green' : 'badge-red'}`}>
+                      {item.is_completed ? 'Done' : 'Pending'}
                     </div>
                   </div>
-                  {item.taken ? (
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="badge badge-green">✅ Taken</div>
-                      <div style={{ fontSize: 11, color: '#9dbdb7', marginTop: 4 }}>Logged at {item.loggedAt}</div>
-                    </div>
-                  ) : (
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: '10px 20px', borderRadius: 10 }}
-                      onClick={() => confirmDose(item.name)}
-                    >
-                      Confirm Dose
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Afternoon */}
-            <div className="time-section">
-              <div className="time-section-header">🌤️ Afternoon</div>
-
-              {afternoonItems.map((item, i) => (
-                <div key={i} className="rem-item">
-                  <div className={`med-icon med-icon-${item.iconBg}`}>{item.icon}</div>
-                  <div className="rem-item-info">
-                    <div className="rem-item-name">{item.name}</div>
-                    <div className="rem-item-for">
-                      <span className="av-xs">👤</span>
-                      For {item.for} • {item.time}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#9dbdb7', fontSize: 13, fontWeight: 600 }}>
-                    🕐 {item.inHours}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-
-
-
-          </div>
+                ))}
+              </section>
+            )}
+          </main>
         </div>
       </div>
     </div>
